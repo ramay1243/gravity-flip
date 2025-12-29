@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gravity Flip - Вирусная игра</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="game-container">
+        <!-- Главное меню -->
+        <div id="main-menu" class="screen active">
+            <div class="menu-content">
+                <h1 class="game-title">GRAVITY FLIP</h1>
+                <p class="game-subtitle">Тапни, чтобы перевернуть гравитацию!</p>
+                
+                <div class="high-score-display">
+                    <span>Лучший результат:</span>
+                    <span id="high-score-value">0</span>
+                </div>
+                
+                <button id="start-btn" class="btn btn-primary">ИГРАТЬ</button>
+                <button id="shop-btn" class="btn btn-secondary">МАГАЗИН</button>
+                <button id="leaderboard-btn" class="btn btn-secondary">ЛИДЕРЫ</button>
+            </div>
+        </div>
+
+        <!-- Игровой экран -->
+        <div id="game-screen" class="screen">
+            <canvas id="game-canvas"></canvas>
+            <div id="game-ui">
+                <div class="score-display">
+                    <span>Очки: <span id="current-score">0</span></span>
+                </div>
+                <div class="lives-display">
+                    <span>Жизни: <span id="lives-count">3</span></span>
+                </div>
+                <div id="pause-overlay" class="pause-overlay hidden">
+                    <div class="pause-content">
+                        <h2>ПАУЗА</h2>
+                        <button id="resume-btn" class="btn btn-primary">ПРОДОЛЖИТЬ</button>
+                        <button id="menu-btn" class="btn btn-secondary">МЕНЮ</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Магазин -->
+        <div id="shop-screen" class="screen">
+            <div class="shop-content">
+                <h2>МАГАЗИН</h2>
+                <div class="stars-balance">
+                    <span>⭐ Звезды: <span id="stars-balance">0</span></span>
+                </div>
+                
+                <div class="shop-items">
+                    <div class="shop-item">
+                        <h3>Убрать рекламу</h3>
+                        <p>Навсегда</p>
+                        <button class="btn btn-buy" data-item="remove-ads" data-price="100">
+                            Купить за 100 ⭐
+                        </button>
+                    </div>
+                    
+                    <div class="shop-item">
+                        <h3>3 Дополнительные жизни</h3>
+                        <p>На эту сессию</p>
+                        <button class="btn btn-buy" data-item="lives" data-price="30">
+                            Купить за 30 ⭐
+                        </button>
+                    </div>
+                    
+                    <div class="shop-item">
+                        <h3>Бонус-пак</h3>
+                        <p>Щит + Магнит + Замедление</p>
+                        <button class="btn btn-buy" data-item="bonus-pack" data-price="50">
+                            Купить за 50 ⭐
+                        </button>
+                    </div>
+                    
+                    <div class="shop-item">
+                        <h3>Premium подписка</h3>
+                        <p>Без рекламы + Эксклюзив</p>
+                        <button class="btn btn-buy" data-item="premium" data-price="200">
+                            Купить за 200 ⭐/мес
+                        </button>
+                    </div>
+                </div>
+                
+                <button id="shop-back-btn" class="btn btn-secondary">НАЗАД</button>
+            </div>
+        </div>
+
+        <!-- Таблица лидеров -->
+        <div id="leaderboard-screen" class="screen">
+            <div class="leaderboard-content">
+                <h2>ТАБЛИЦА ЛИДЕРОВ</h2>
+                <div id="leaderboard-list"></div>
+                <button id="share-btn" class="btn btn-primary">ПОДЕЛИТЬСЯ</button>
+                <button id="leaderboard-back-btn" class="btn btn-secondary">НАЗАД</button>
+            </div>
+        </div>
+
+        <!-- Game Over экран -->
+        <div id="gameover-screen" class="screen">
+            <div class="gameover-content">
+                <h2>ИГРА ОКОНЧЕНА!</h2>
+                <div class="final-score">
+                    <p>Ваш результат:</p>
+                    <p class="score-value" id="final-score">0</p>
+                </div>
+                <button id="restart-btn" class="btn btn-primary">ИГРАТЬ СНОВА</button>
+                <button id="gameover-menu-btn" class="btn btn-secondary">МЕНЮ</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+    <script src="telegram-integration.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,10 @@
+# GitHub Pages Jekyll конфигурация (если используется Jekyll)
+# Для статических сайтов можно оставить пустым или удалить
+
+plugins:
+  - jekyll-feed
+
+# Отключение Jekyll обработки (для чистого HTML)
+include: []
+exclude: []
+
