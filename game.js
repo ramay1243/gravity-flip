@@ -528,7 +528,8 @@ function update(dt = 1) {
     
     // Обновление частиц (синхронизировано с delta time)
     // Ограничение количества частиц на мобильных устройствах
-    const maxParticles = window.mobileMode ? 30 : 200; // Еще меньше на мобильных
+    // На мобильных почти полностью отключаем частицы для производительности
+    const maxParticles = window.mobileMode ? 10 : 200;
     
     if (particles.length > maxParticles) {
         // Удаляем старые частицы
@@ -594,36 +595,43 @@ function render() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Фоновые звезды
-    drawBackgroundStars();
+    // Фоновые звезды (только на ПК)
+    if (!window.mobileMode) {
+        drawBackgroundStars();
+    }
     
-    // Отрисовка звезд
+    // Отрисовка звезд (упрощенная на мобильных)
     stars.forEach(star => {
-        // Пульсация для специальных звезд (синхронизировано с реальным временем)
-        if (star.type !== 'normal') {
-            const pulse = Math.sin((gameTime / 60) * 0.2) * 2; // gameTime в кадрах, делим на 60 для секунд
-            drawStar(star.x, star.y, star.radius + pulse, star.color);
+        if (window.mobileMode) {
+            // Простая отрисовка без пульсации на мобильных
+            drawStarSimple(star.x, star.y, star.radius, star.color);
         } else {
-            drawStar(star.x, star.y, star.radius, star.color);
+            // Пульсация для специальных звезд (только на ПК)
+            if (star.type !== 'normal') {
+                const pulse = Math.sin((gameTime / 60) * 0.2) * 2;
+                drawStar(star.x, star.y, star.radius + pulse, star.color);
+            } else {
+                drawStar(star.x, star.y, star.radius, star.color);
+            }
         }
     });
     
-    // Отрисовка препятствий
+    // Отрисовка препятствий (упрощенная на мобильных)
     obstacles.forEach(obstacle => {
-        drawObstacle(obstacle.x, obstacle.y, obstacle.radius, obstacle.color, obstacle.rotation);
+        if (window.mobileMode) {
+            drawObstacleSimple(obstacle.x, obstacle.y, obstacle.radius);
+        } else {
+            drawObstacle(obstacle.x, obstacle.y, obstacle.radius, obstacle.color, obstacle.rotation);
+        }
     });
     
-    // Отрисовка врагов
+    // Отрисовка врагов (упрощенная на мобильных)
     enemies.forEach(enemy => {
-        drawEnemy(enemy.x, enemy.y, enemy.radius, enemy.angle);
-    });
-    
-    // Отрисовка эффектов экрана
-    screenEffects.forEach(effect => {
-        ctx.globalAlpha = effect.alpha * 0.3;
-        ctx.fillStyle = effect.color;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.globalAlpha = 1;
+        if (window.mobileMode) {
+            drawEnemySimple(enemy.x, enemy.y, enemy.radius);
+        } else {
+            drawEnemy(enemy.x, enemy.y, enemy.radius, enemy.angle);
+        }
     });
     
     // Отрисовка бонусов
@@ -631,47 +639,67 @@ function render() {
         drawBonus(bonus.x, bonus.y, bonus.radius, bonus.type);
     });
     
-    // Отрисовка шарика с эффектом переворота
-    if (activeBonuses.shield) {
-        ctx.shadowBlur = 20;
-        ctx.shadowColor = '#00ff00';
+    // Отрисовка шарика (упрощенная на мобильных)
+    if (window.mobileMode) {
+        // Простая отрисовка без эффектов
+        drawBallSimple(ball.x, ball.y, ball.radius, ball.color);
     } else {
-        // Эффект свечения при недавнем перевороте
-        if (gameTime - lastGravityFlip < 20) {
-            const colors = ['#00f5ff', '#ff00ff', '#00ff00', '#ffff00'];
-            ctx.shadowBlur = 25;
-            ctx.shadowColor = colors[gravityDirection];
+        // Эффекты только на ПК
+        if (activeBonuses.shield) {
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = '#00ff00';
         } else {
-            ctx.shadowBlur = 10;
-            ctx.shadowColor = ball.color;
+            // Эффект свечения при недавнем перевороте
+            if (gameTime - lastGravityFlip < 20) {
+                const colors = ['#00f5ff', '#ff00ff', '#00ff00', '#ffff00'];
+                ctx.shadowBlur = 25;
+                ctx.shadowColor = colors[gravityDirection];
+            } else {
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = ball.color;
+            }
         }
+        drawBall(ball.x, ball.y, ball.radius, ball.color);
+        ctx.shadowBlur = 0;
     }
-    drawBall(ball.x, ball.y, ball.radius, ball.color);
-    ctx.shadowBlur = 0;
     
-    // Отрисовка частиц
-    particles.forEach(particle => {
-        ctx.globalAlpha = particle.alpha;
-        ctx.fillStyle = particle.color;
-        ctx.beginPath();
-        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-        ctx.fill();
-    });
+    // Отрисовка частиц (только на ПК или очень мало на мобильных)
+    if (!window.mobileMode || particles.length < 5) {
+        particles.forEach(particle => {
+            ctx.globalAlpha = particle.alpha;
+            ctx.fillStyle = particle.color;
+            ctx.beginPath();
+            ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+            ctx.fill();
+        });
+    }
     ctx.globalAlpha = 1;
     
-    // Отрисовка анимаций очков
-    scoreAnimations.forEach(anim => {
-        ctx.globalAlpha = anim.alpha;
-        ctx.fillStyle = anim.color;
-        ctx.font = `bold ${anim.size}px Arial`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 3;
-        ctx.strokeText(anim.text, anim.x, anim.y);
-        ctx.fillText(anim.text, anim.x, anim.y);
-        ctx.globalAlpha = 1;
-    });
+    // Отрисовка анимаций очков (только на ПК)
+    if (!window.mobileMode) {
+        scoreAnimations.forEach(anim => {
+            ctx.globalAlpha = anim.alpha;
+            ctx.fillStyle = anim.color;
+            ctx.font = `bold ${anim.size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 3;
+            ctx.strokeText(anim.text, anim.x, anim.y);
+            ctx.fillText(anim.text, anim.x, anim.y);
+            ctx.globalAlpha = 1;
+        });
+    }
+    
+    // Отрисовка эффектов экрана (только на ПК)
+    if (!window.mobileMode) {
+        screenEffects.forEach(effect => {
+            ctx.globalAlpha = effect.alpha * 0.3;
+            ctx.fillStyle = effect.color;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.globalAlpha = 1;
+        });
+    }
     
     // Отрисовка комбо
     if (combo > 0) {
@@ -745,6 +773,19 @@ function drawStar(x, y, radius, color) {
     ctx.beginPath();
     ctx.arc(x - radius * 0.3, y - radius * 0.3, radius * 0.4, 0, Math.PI * 2);
     ctx.fill();
+}
+
+// Упрощенная отрисовка звезды для мобильных
+function drawStarSimple(x, y, radius, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Простая обводка
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
 }
 
 function drawObstacle(x, y, radius, color, rotation = 0) {
@@ -1077,22 +1118,37 @@ function drawEnemy(x, y, radius, angle) {
     ctx.restore();
 }
 
-function createGravityFlipEffect() {
-    // Визуальный эффект при перевороте гравитации
-    const colors = ['#00f5ff', '#ff00ff', '#00ff00', '#ffff00'];
+// Упрощенная отрисовка врага для мобильных
+function drawEnemySimple(x, y, radius) {
+    ctx.fillStyle = '#ff0066';
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
     
-    // На мобильных упрощаем эффекты
-    if (!window.mobileMode) {
-        screenEffects.push({
-            color: colors[gravityDirection],
-            life: 15,
-            maxLife: 15,
-            alpha: 1
-        });
+    // Простая обводка
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+}
+
+function createGravityFlipEffect() {
+    // На мобильных полностью отключаем эффекты
+    if (window.mobileMode) {
+        return; // Выходим сразу на мобильных
     }
     
-    // Частицы переворота (намного меньше на мобильных)
-    const particleCount = window.mobileMode ? 10 : 50;
+    // Визуальный эффект при перевороте гравитации (только на ПК)
+    const colors = ['#00f5ff', '#ff00ff', '#00ff00', '#ffff00'];
+    
+    screenEffects.push({
+        color: colors[gravityDirection],
+        life: 15,
+        maxLife: 15,
+        alpha: 1
+    });
+    
+    // Частицы переворота (только на ПК)
+    const particleCount = 50;
     for (let i = 0; i < particleCount; i++) {
         particles.push({
             x: ball.x,
@@ -1281,7 +1337,8 @@ function updateUI() {
 }
 
 function createFlipParticles() {
-    const particleCount = window.mobileMode ? 5 : 20; // Еще меньше на мобильных
+    // На мобильных почти не создаем частиц
+    const particleCount = window.mobileMode ? 0 : 20;
     
     for (let i = 0; i < particleCount; i++) {
         particles.push({
@@ -1299,7 +1356,8 @@ function createFlipParticles() {
 }
 
 function createStarParticles(x, y, color = '#ffd700') {
-    const particleCount = window.mobileMode ? 5 : 20; // Еще меньше на мобильных
+    // На мобильных почти не создаем частиц
+    const particleCount = window.mobileMode ? 0 : 20;
     
     for (let i = 0; i < particleCount; i++) {
         particles.push({
