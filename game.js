@@ -7,10 +7,14 @@ let lives = 3;
 let gameSpeed = 1.2;
 let gravityDirection = 0; // 0: down, 1: up, 2: left, 3: right
 let gameTime = 0;
+let lastFrameTime = 0; // Время последнего кадра для delta time
+let deltaTime = 0; // Разница времени между кадрами
 let combo = 0; // Комбо система
 let comboMultiplier = 1; // Мультипликатор очков
 let lastStarTime = 0; // Время последней собранной звезды
 let scoreAnimations = []; // Анимации очков
+let targetFPS = 60; // Целевой FPS
+let frameTime = 1000 / targetFPS; // Время одного кадра в миллисекундах
 let gravityDirections = [
     { x: 0, y: 1, name: 'down' },
     { x: 0, y: -1, name: 'up' },
@@ -53,6 +57,13 @@ let bonusTimers = {
 function init() {
     canvas = document.getElementById('game-canvas');
     ctx = canvas.getContext('2d');
+    
+    // Оптимизация для мобильных устройств
+    if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+        // Уменьшаем количество частиц и эффектов на мобильных
+        targetFPS = 30; // Снижаем целевую частоту кадров для мобильных
+        frameTime = 1000 / targetFPS;
+    }
     
     // Установка размера canvas
     resizeCanvas();
@@ -170,6 +181,8 @@ function resetGame() {
     lives = 3;
     gameSpeed = 1.2;
     gameTime = 0;
+    lastFrameTime = 0; // Сброс времени кадра
+    deltaTime = 0;
     combo = 0;
     comboMultiplier = 1;
     lastStarTime = 0;
@@ -200,17 +213,37 @@ function resetGame() {
     updateUI();
 }
 
-function gameLoop() {
+function gameLoop(currentTime) {
     if (gameState !== 'playing') return;
     
-    update();
+    // Расчет delta time для синхронизации скорости
+    if (lastFrameTime === 0) {
+        lastFrameTime = currentTime;
+    }
+    
+    deltaTime = currentTime - lastFrameTime;
+    lastFrameTime = currentTime;
+    
+    // Ограничение delta time для предотвращения больших скачков
+    deltaTime = Math.min(deltaTime, 100); // Максимум 100ms (10 FPS минимум)
+    
+    // Нормализация к целевому FPS (60 FPS = 16.67ms на кадр)
+    const normalizedDelta = deltaTime / frameTime;
+    
+    update(normalizedDelta);
     render();
     
     requestAnimationFrame(gameLoop);
 }
 
-function update() {
-    const dt = activeBonuses.slowMotion ? 0.5 : 1;
+function update(dt = 1) {
+    // Применение замедления времени бонуса
+    const timeScale = activeBonuses.slowMotion ? 0.5 : 1;
+    const adjustedDt = dt * timeScale;
+    
+    // Обновление игрового времени (в кадрах, но синхронизировано)
+    gameTime += adjustedDt;
+    
     const currentGravity = gravityDirections[gravityDirection];
     
     // УПРОЩЕННОЕ УПРАВЛЕНИЕ - более отзывчивое, меньше инерции
@@ -224,12 +257,13 @@ function update() {
     ball.vx = Math.max(-maxSpeed, Math.min(maxSpeed, ball.vx));
     ball.vy = Math.max(-maxSpeed, Math.min(maxSpeed, ball.vy));
     
-    // Обновление позиции
-    ball.x += ball.vx * dt;
-    ball.y += ball.vy * dt;
+    // Обновление позиции с учетом delta time
+    ball.x += ball.vx * adjustedDt;
+    ball.y += ball.vy * adjustedDt;
     
     // Обновление комбо (сброс если долго не собирали звезды)
-    if (gameTime - lastStarTime > 180) { // 3 секунды
+    // 180 кадров при 60 FPS = 3 секунды
+    if (gameTime - lastStarTime > 180) {
         combo = 0;
         comboMultiplier = 1;
     }
@@ -265,32 +299,31 @@ function update() {
         }
     }
     
-    // Увеличение времени игры
-    gameTime++;
+    // gameTime обновляется в начале функции update через adjustedDt
     
-    // Генерация звезд (еще больше увеличена частота)
-    if (Math.random() < 0.12) {
+    // Генерация звезд (частота зависит от delta time для синхронизации)
+    if (Math.random() < 0.12 * adjustedDt) {
         createStar();
     }
     
     // Генерация специальных звезд (редкие, больше очков)
-    if (Math.random() < 0.005) {
+    if (Math.random() < 0.005 * adjustedDt) {
         createSpecialStar();
     }
     
-    // Ритмичные эффекты - пульсация экрана в такт
-    if (gameTime % 60 === 0) {
+    // Ритмичные эффекты - пульсация экрана в такт (каждую секунду при 60 FPS)
+    if (Math.floor(gameTime) % 60 === 0 && Math.floor(gameTime) !== Math.floor(gameTime - adjustedDt)) {
         createRhythmEffect();
     }
     
     // Генерация препятствий (только после 5 секунд игры, реже на старте)
     const obstacleChance = gameTime < 300 ? 0.002 : (gameTime < 600 ? 0.005 : 0.01);
-    if (Math.random() < obstacleChance) {
+    if (Math.random() < obstacleChance * adjustedDt) {
         createObstacle();
     }
     
     // Генерация врагов (после 10 секунд)
-    if (gameTime > 600 && Math.random() < 0.003) {
+    if (gameTime > 600 && Math.random() < 0.003 * adjustedDt) {
         createEnemy();
     }
     
@@ -302,12 +335,12 @@ function update() {
         const dist = Math.sqrt(dx * dx + dy * dy);
         
         if (dist > 0) {
-            enemy.x += (dx / dist) * enemy.speed;
-            enemy.y += (dy / dist) * enemy.speed;
+            enemy.x += (dx / dist) * enemy.speed * adjustedDt;
+            enemy.y += (dy / dist) * enemy.speed * adjustedDt;
         }
         
-        // Вращение
-        enemy.angle += 0.1;
+        // Вращение (синхронизировано с delta time)
+        enemy.angle += 0.1 * adjustedDt;
         
         // Проверка столкновения
         const collisionDist = Math.sqrt(
@@ -406,10 +439,10 @@ function update() {
     
     // Обновление препятствий (теперь они движутся!)
     obstacles.forEach((obstacle, index) => {
-        // Движение препятствия
-        obstacle.x += obstacle.vx;
-        obstacle.y += obstacle.vy;
-        obstacle.rotation += obstacle.rotationSpeed;
+        // Движение препятствия (синхронизировано с delta time)
+        obstacle.x += obstacle.vx * adjustedDt;
+        obstacle.y += obstacle.vy * adjustedDt;
+        obstacle.rotation += obstacle.rotationSpeed * adjustedDt;
         
         // Проверка столкновения
         const dist = Math.sqrt(
@@ -438,40 +471,40 @@ function update() {
         }
     });
     
-    // Обновление частиц
+    // Обновление частиц (синхронизировано с delta time)
     particles.forEach((particle, index) => {
-        particle.x += particle.vx;
-        particle.y += particle.vy;
-        particle.life--;
+        particle.x += particle.vx * adjustedDt;
+        particle.y += particle.vy * adjustedDt;
+        particle.life -= adjustedDt;
         particle.alpha = particle.life / particle.maxLife;
         if (particle.life <= 0) {
             particles.splice(index, 1);
         }
     });
     
-    // Обновление анимаций очков
+    // Обновление анимаций очков (синхронизировано с delta time)
     scoreAnimations.forEach((anim, index) => {
-        anim.y -= 2;
-        anim.life--;
+        anim.y -= 2 * adjustedDt;
+        anim.life -= adjustedDt;
         anim.alpha = anim.life / anim.maxLife;
         if (anim.life <= 0) {
             scoreAnimations.splice(index, 1);
         }
     });
     
-    // Обновление эффектов экрана
+    // Обновление эффектов экрана (синхронизировано с delta time)
     screenEffects.forEach((effect, index) => {
-        effect.life--;
+        effect.life -= adjustedDt;
         effect.alpha = effect.life / effect.maxLife;
         if (effect.life <= 0) {
             screenEffects.splice(index, 1);
         }
     });
     
-    // Обновление таймеров бонусов
+    // Обновление таймеров бонусов (синхронизировано с delta time)
     Object.keys(bonusTimers).forEach(bonus => {
         if (bonusTimers[bonus] > 0) {
-            bonusTimers[bonus]--;
+            bonusTimers[bonus] -= adjustedDt;
             if (bonusTimers[bonus] <= 0) {
                 activeBonuses[bonus] = false;
             }
@@ -503,9 +536,9 @@ function render() {
     
     // Отрисовка звезд
     stars.forEach(star => {
-        // Пульсация для специальных звезд
+        // Пульсация для специальных звезд (синхронизировано с реальным временем)
         if (star.type !== 'normal') {
-            const pulse = Math.sin(gameTime * 0.2) * 2;
+            const pulse = Math.sin((gameTime / 60) * 0.2) * 2; // gameTime в кадрах, делим на 60 для секунд
             drawStar(star.x, star.y, star.radius + pulse, star.color);
         } else {
             drawStar(star.x, star.y, star.radius, star.color);
@@ -595,8 +628,8 @@ function render() {
 }
 
 function drawBall(x, y, radius, color) {
-    // Пульсация шарика
-    const pulse = Math.sin(gameTime * 0.3) * 2;
+    // Пульсация шарика (синхронизировано с реальным временем)
+    const pulse = Math.sin((gameTime / 60) * 0.3) * 2; // gameTime в кадрах, делим на 60 для секунд
     const currentRadius = radius + pulse;
     
     const gradient = ctx.createRadialGradient(x, y, 0, x, y, currentRadius);
