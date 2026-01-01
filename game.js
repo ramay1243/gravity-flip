@@ -184,6 +184,22 @@ function flipGravity() {
         }
     });
     
+    // Отталкивание препятствий при перевороте (новая механика!)
+    obstacles.forEach(obstacle => {
+        const dx = obstacle.x - ball.x;
+        const dy = obstacle.y - ball.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 150) {
+            obstacle.vx += (dx / dist) * 2;
+            obstacle.vy += (dy / dist) * 2;
+        }
+    });
+    
+    // Небольшой импульс шарику для динамики
+    const impulse = 0.5;
+    ball.vx += gravityDirections[gravityDirection].x * impulse;
+    ball.vy += gravityDirections[gravityDirection].y * impulse;
+    
     // Эффект вибрации
     if (window.Telegram?.WebApp?.HapticFeedback) {
         window.Telegram.WebApp.HapticFeedback.impactOccurred('medium');
@@ -195,12 +211,17 @@ function startGame() {
     gameState = 'playing';
     showScreen('game');
     
-    // Создаем несколько начальных звезд для легкого старта
-    for (let i = 0; i < 5; i++) {
+    // Создаем больше начальных звезд для быстрого старта
+    for (let i = 0; i < 8; i++) {
         setTimeout(() => {
             createStar();
-        }, i * 200);
+        }, i * 150);
     }
+    
+    // Создаем одну цепочку звезд сразу для интереса
+    setTimeout(() => {
+        createStarChain();
+    }, 1000);
     
     gameLoop();
 }
@@ -284,19 +305,22 @@ function update(dt = 1) {
     const adjustedDt = limitedDt * timeScale;
     
     // Обновление игрового времени (в кадрах, но синхронизировано)
-    // Используем фиксированное значение для стабильности
     gameTime += adjustedDt;
     
     const currentGravity = gravityDirections[gravityDirection];
     
-    // УПРОЩЕННОЕ УПРАВЛЕНИЕ - более отзывчивое, меньше инерции
-    // Прямое применение гравитации без накопления скорости
-    const gravityStrength = gameSpeed * 0.15; // Уменьшена сила гравитации
-    ball.vx = currentGravity.x * gravityStrength * 8; // Прямое управление
-    ball.vy = currentGravity.y * gravityStrength * 8;
+    // ПЛАВНОЕ УПРАВЛЕНИЕ С ИНЕРЦИЕЙ - более естественное
+    const gravityStrength = gameSpeed * 0.12; // Уменьшена сила гравитации для плавности
+    const targetVx = currentGravity.x * gravityStrength * 6; // Целевая скорость
+    const targetVy = currentGravity.y * gravityStrength * 6;
     
-    // Ограничение скорости
-    const maxSpeed = 5; // Еще больше уменьшено
+    // Плавное приближение к целевой скорости (инерция)
+    const acceleration = 0.15; // Скорость изменения (чем больше, тем быстрее реакция)
+    ball.vx += (targetVx - ball.vx) * acceleration * adjustedDt;
+    ball.vy += (targetVy - ball.vy) * acceleration * adjustedDt;
+    
+    // Ограничение скорости (более плавное)
+    const maxSpeed = 4; // Уменьшена максимальная скорость
     ball.vx = Math.max(-maxSpeed, Math.min(maxSpeed, ball.vx));
     ball.vy = Math.max(-maxSpeed, Math.min(maxSpeed, ball.vy));
     
@@ -345,17 +369,21 @@ function update(dt = 1) {
     // gameTime обновляется в начале функции update через adjustedDt
     
     // Генерация звезд (частота зависит от delta time для синхронизации)
-    // На мобильных реже генерируем
-    const starChance = window.mobileMode ? 0.08 : 0.12;
+    // Увеличена частота для большей динамики
+    const starChance = window.mobileMode ? 0.1 : 0.15;
     if (Math.random() < starChance * adjustedDt) {
         createStar();
     }
     
-    // Генерация специальных звезд (редкие, больше очков)
-    // На мобильных еще реже
-    const specialStarChance = window.mobileMode ? 0.003 : 0.005;
+    // Генерация специальных звезд (чаще для интереса)
+    const specialStarChance = window.mobileMode ? 0.005 : 0.008;
     if (Math.random() < specialStarChance * adjustedDt) {
         createSpecialStar();
+    }
+    
+    // Генерация цепочек звезд (новая механика!)
+    if (Math.random() < 0.002 * adjustedDt && stars.length < 15) {
+        createStarChain();
     }
     
     // Ритмичные эффекты - только на ПК
@@ -363,23 +391,27 @@ function update(dt = 1) {
         createRhythmEffect();
     }
     
-    // Генерация препятствий (только после 5 секунд игры, реже на старте)
-    // На мобильных реже генерируем препятствия
-    let obstacleChance = gameTime < 300 ? 0.002 : (gameTime < 600 ? 0.005 : 0.01);
+    // Генерация препятствий (только после 3 секунд игры для быстрого старта)
+    let obstacleChance = gameTime < 180 ? 0.001 : (gameTime < 400 ? 0.004 : 0.008);
     if (window.mobileMode) {
-        obstacleChance *= 0.7; // На 30% реже на мобильных
+        obstacleChance *= 0.8;
     }
     if (Math.random() < obstacleChance * adjustedDt) {
         createObstacle();
     }
     
-    // Генерация врагов (после 10 секунд, реже на мобильных)
-    let enemyChance = 0.003;
+    // Генерация врагов (после 8 секунд для быстрого старта)
+    let enemyChance = 0.004;
     if (window.mobileMode) {
-        enemyChance = 0.002; // Реже на мобильных
+        enemyChance = 0.003;
     }
-    if (gameTime > 600 && Math.random() < enemyChance * adjustedDt) {
+    if (gameTime > 480 && Math.random() < enemyChance * adjustedDt) {
         createEnemy();
+    }
+    
+    // Генерация групп препятствий (новая механика!)
+    if (gameTime > 600 && Math.random() < 0.001 * adjustedDt) {
+        createObstacleGroup();
     }
     
     // Обновление врагов
@@ -420,27 +452,33 @@ function update(dt = 1) {
     
     // Обновление звезд (добавлено движение к центру для легкости сбора)
     stars.forEach((star, index) => {
-        // Движение звезд к центру экрана (легче собирать)
+        // Движение звезд к центру экрана (легче собирать, но не слишком быстро)
         const centerX = canvas.width / 2;
         const centerY = canvas.height / 2;
         const dxToCenter = centerX - star.x;
         const dyToCenter = centerY - star.y;
         const distToCenter = Math.sqrt(dxToCenter * dxToCenter + dyToCenter * dyToCenter);
         
-        if (distToCenter > 50) {
-            star.x += (dxToCenter / distToCenter) * 0.3;
-            star.y += (dyToCenter / distToCenter) * 0.3;
+        // Медленное движение к центру для динамики
+        if (distToCenter > 80) {
+            star.x += (dxToCenter / distToCenter) * 0.2 * adjustedDt;
+            star.y += (dyToCenter / distToCenter) * 0.2 * adjustedDt;
         }
         
-        // Магнит бонус
+        // Магнит бонус (сильнее эффект)
         if (activeBonuses.magnet) {
             const dx = ball.x - star.x;
             const dy = ball.y - star.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist < 150) {
-                star.x += (dx / dist) * 4;
-                star.y += (dy / dist) * 4;
+            if (dist < 200) {
+                star.x += (dx / dist) * 5 * adjustedDt;
+                star.y += (dy / dist) * 5 * adjustedDt;
             }
+        }
+        
+        // Пульсация специальных звезд для визуального интереса
+        if (star.type !== 'normal' && !window.mobileMode) {
+            star.radius = star.radius + Math.sin(gameTime * 0.1) * 0.5;
         }
         
         // Проверка сбора звезды
@@ -575,8 +613,12 @@ function update(dt = 1) {
         }
     });
     
-    // Увеличение сложности (более плавное)
-    gameSpeed = 1.2 + (score / 800) + (gameTime / 2000);
+    // Увеличение сложности (более плавное, но интереснее)
+    gameSpeed = 1.0 + (score / 1000) + (gameTime / 2500);
+    
+    // Периодические всплески сложности для динамики
+    const difficultySpike = Math.sin(gameTime / 200) * 0.3;
+    gameSpeed += difficultySpike;
     
     // Удаление объектов за пределами экрана
     stars = stars.filter(star => 
@@ -963,7 +1005,8 @@ function createSpecialStar() {
     const types = [
         { color: '#ff00ff', points: 50, radius: 16, type: 'rare' },
         { color: '#00ff00', points: 30, radius: 14, type: 'good' },
-        { color: '#ff6b00', points: 25, radius: 13, type: 'orange' }
+        { color: '#ff6b00', points: 25, radius: 13, type: 'orange' },
+        { color: '#00ffff', points: 40, radius: 15, type: 'cyan' } // Новая звезда
     ];
     
     const starType = types[Math.floor(Math.random() * types.length)];
@@ -997,6 +1040,56 @@ function createSpecialStar() {
         points: starType.points,
         type: starType.type
     });
+}
+
+// Новая механика: цепочка звезд
+function createStarChain() {
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 100 + Math.random() * 150;
+    
+    // Создаем 3-5 звезд в цепочке
+    const count = 3 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < count; i++) {
+        const offset = (i - count / 2) * 40;
+        const x = centerX + Math.cos(angle) * distance + Math.sin(angle) * offset;
+        const y = centerY + Math.sin(angle) * distance - Math.cos(angle) * offset;
+        
+        stars.push({
+            x: Math.max(20, Math.min(canvas.width - 20, x)),
+            y: Math.max(20, Math.min(canvas.height - 20, y)),
+            radius: 12,
+            color: '#ffd700',
+            points: 10,
+            type: 'normal'
+        });
+    }
+}
+
+// Новая механика: группа препятствий
+function createObstacleGroup() {
+    const centerX = Math.random() * canvas.width;
+    const centerY = Math.random() * canvas.height;
+    const count = 3 + Math.floor(Math.random() * 3);
+    
+    for (let i = 0; i < count; i++) {
+        const angle = (Math.PI * 2 * i) / count;
+        const distance = 50 + Math.random() * 30;
+        const x = centerX + Math.cos(angle) * distance;
+        const y = centerY + Math.sin(angle) * distance;
+        
+        obstacles.push({
+            x: x,
+            y: y,
+            vx: (Math.random() - 0.5) * 2,
+            vy: (Math.random() - 0.5) * 2,
+            radius: 15 + Math.random() * 10,
+            color: '#ff0000',
+            rotation: Math.random() * Math.PI * 2,
+            rotationSpeed: (Math.random() - 0.5) * 0.1
+        });
+    }
 }
 
 function createObstacle() {
