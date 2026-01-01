@@ -73,6 +73,11 @@ function init() {
         // Уменьшаем количество частиц и эффектов на мобильных
         targetFPS = 30; // Снижаем целевую частоту кадров для мобильных
         frameTime = 1000 / targetFPS;
+        
+        // Отключаем некоторые эффекты для лучшей производительности
+        window.mobileMode = true;
+    } else {
+        window.mobileMode = false;
     }
     
     // Установка размера canvas
@@ -252,14 +257,17 @@ function gameLoop(currentTime) {
     
     // Ограничение delta time для предотвращения больших скачков
     // На мобильных устройствах ограничиваем сильнее
-    const maxDelta = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? 50 : 100;
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const maxDelta = isMobile ? 33 : 100; // 33ms = ~30 FPS минимум на мобильных
     deltaTime = Math.min(deltaTime, maxDelta);
     
-    // Нормализация к целевому FPS (60 FPS = 16.67ms на кадр)
+    // Нормализация к целевому FPS
     const normalizedDelta = deltaTime / frameTime;
     
     // Дополнительная проверка для предотвращения слишком больших значений
-    const safeDelta = Math.min(normalizedDelta, 2); // Максимум 2x скорость
+    // На мобильных еще больше ограничиваем
+    const maxSpeed = isMobile ? 1.5 : 2;
+    const safeDelta = Math.min(normalizedDelta, maxSpeed);
     
     update(safeDelta);
     render();
@@ -337,28 +345,40 @@ function update(dt = 1) {
     // gameTime обновляется в начале функции update через adjustedDt
     
     // Генерация звезд (частота зависит от delta time для синхронизации)
-    if (Math.random() < 0.12 * adjustedDt) {
+    // На мобильных реже генерируем
+    const starChance = window.mobileMode ? 0.08 : 0.12;
+    if (Math.random() < starChance * adjustedDt) {
         createStar();
     }
     
     // Генерация специальных звезд (редкие, больше очков)
-    if (Math.random() < 0.005 * adjustedDt) {
+    // На мобильных еще реже
+    const specialStarChance = window.mobileMode ? 0.003 : 0.005;
+    if (Math.random() < specialStarChance * adjustedDt) {
         createSpecialStar();
     }
     
-    // Ритмичные эффекты - пульсация экрана в такт (каждую секунду при 60 FPS)
-    if (Math.floor(gameTime) % 60 === 0 && Math.floor(gameTime) !== Math.floor(gameTime - adjustedDt)) {
+    // Ритмичные эффекты - только на ПК
+    if (!window.mobileMode && Math.floor(gameTime) % 60 === 0 && Math.floor(gameTime) !== Math.floor(gameTime - adjustedDt)) {
         createRhythmEffect();
     }
     
     // Генерация препятствий (только после 5 секунд игры, реже на старте)
-    const obstacleChance = gameTime < 300 ? 0.002 : (gameTime < 600 ? 0.005 : 0.01);
+    // На мобильных реже генерируем препятствия
+    let obstacleChance = gameTime < 300 ? 0.002 : (gameTime < 600 ? 0.005 : 0.01);
+    if (window.mobileMode) {
+        obstacleChance *= 0.7; // На 30% реже на мобильных
+    }
     if (Math.random() < obstacleChance * adjustedDt) {
         createObstacle();
     }
     
-    // Генерация врагов (после 10 секунд)
-    if (gameTime > 600 && Math.random() < 0.003 * adjustedDt) {
+    // Генерация врагов (после 10 секунд, реже на мобильных)
+    let enemyChance = 0.003;
+    if (window.mobileMode) {
+        enemyChance = 0.002; // Реже на мобильных
+    }
+    if (gameTime > 600 && Math.random() < enemyChance * adjustedDt) {
         createEnemy();
     }
     
@@ -508,11 +528,11 @@ function update(dt = 1) {
     
     // Обновление частиц (синхронизировано с delta time)
     // Ограничение количества частиц на мобильных устройствах
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    const maxParticles = isMobile ? 50 : 200; // Максимум частиц на экране
+    const maxParticles = window.mobileMode ? 30 : 200; // Еще меньше на мобильных
     
     if (particles.length > maxParticles) {
-        particles = particles.slice(0, maxParticles);
+        // Удаляем старые частицы
+        particles.splice(0, particles.length - maxParticles);
     }
     
     particles.forEach((particle, index) => {
@@ -835,7 +855,9 @@ function drawGravityIndicator() {
 
 function drawBackgroundStars() {
     ctx.fillStyle = '#fff';
-    for (let i = 0; i < 50; i++) {
+    // Меньше фоновых звезд на мобильных
+    const starCount = window.mobileMode ? 25 : 50;
+    for (let i = 0; i < starCount; i++) {
         const x = (i * 137.5) % canvas.width;
         const y = (i * 197.3) % canvas.height;
         const size = Math.random() * 2;
@@ -1056,19 +1078,21 @@ function drawEnemy(x, y, radius, angle) {
 }
 
 function createGravityFlipEffect() {
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    
     // Визуальный эффект при перевороте гравитации
     const colors = ['#00f5ff', '#ff00ff', '#00ff00', '#ffff00'];
-    screenEffects.push({
-        color: colors[gravityDirection],
-        life: isMobile ? 10 : 15, // Короче на мобильных
-        maxLife: isMobile ? 10 : 15,
-        alpha: 1
-    });
     
-    // Частицы переворота (меньше на мобильных)
-    const particleCount = isMobile ? 20 : 50;
+    // На мобильных упрощаем эффекты
+    if (!window.mobileMode) {
+        screenEffects.push({
+            color: colors[gravityDirection],
+            life: 15,
+            maxLife: 15,
+            alpha: 1
+        });
+    }
+    
+    // Частицы переворота (намного меньше на мобильных)
+    const particleCount = window.mobileMode ? 10 : 50;
     for (let i = 0; i < particleCount; i++) {
         particles.push({
             x: ball.x,
@@ -1084,7 +1108,7 @@ function createGravityFlipEffect() {
     }
     
     // Волновой эффект от шарика (только на ПК)
-    if (!isMobile) {
+    if (!window.mobileMode) {
         for (let i = 0; i < 3; i++) {
             setTimeout(() => {
                 createWaveEffect(ball.x, ball.y, colors[gravityDirection]);
@@ -1094,8 +1118,7 @@ function createGravityFlipEffect() {
 }
 
 function createWaveEffect(x, y, color) {
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    const particleCount = isMobile ? 10 : 20; // Меньше частиц на мобильных
+    const particleCount = window.mobileMode ? 5 : 20; // Еще меньше на мобильных
     
     for (let i = 0; i < particleCount; i++) {
         const angle = (Math.PI * 2 * i) / particleCount;
@@ -1258,8 +1281,7 @@ function updateUI() {
 }
 
 function createFlipParticles() {
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    const particleCount = isMobile ? 10 : 20; // Меньше частиц на мобильных
+    const particleCount = window.mobileMode ? 5 : 20; // Еще меньше на мобильных
     
     for (let i = 0; i < particleCount; i++) {
         particles.push({
@@ -1277,8 +1299,7 @@ function createFlipParticles() {
 }
 
 function createStarParticles(x, y, color = '#ffd700') {
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    const particleCount = isMobile ? 10 : 20; // Меньше частиц на мобильных
+    const particleCount = window.mobileMode ? 5 : 20; // Еще меньше на мобильных
     
     for (let i = 0; i < particleCount; i++) {
         particles.push({
@@ -1369,4 +1390,13 @@ function saveGameData() {
 // Инициализация будет вызвана из index.html
 // Функция init доступна глобально для вызова из HTML
 window.init = init;
+
+// Также пробуем инициализировать сразу, если DOM готов
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(init, 100);
+} else {
+    document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(init, 100);
+    });
+}
 

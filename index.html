@@ -123,12 +123,20 @@
     <script src="game.js"></script>
     <script>
         // Инициализация при загрузке (работает и без Telegram)
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', function() {
-                setTimeout(init, 100);
-            });
-        } else {
-            setTimeout(init, 100);
+        // game.js уже содержит инициализацию, но добавляем дополнительную проверку
+        window.addEventListener('load', function() {
+            if (typeof init === 'function' && !canvas) {
+                setTimeout(init, 200);
+            }
+        });
+        
+        // Также пробуем инициализировать сразу, если все готово
+        if (document.readyState === 'complete') {
+            setTimeout(function() {
+                if (typeof init === 'function' && !canvas) {
+                    init();
+                }
+            }, 100);
         }
     </script>
 </body>
