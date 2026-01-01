@@ -30,8 +30,11 @@ let ball = {
 
 let stars = [];
 let obstacles = [];
+let enemies = []; // Враги, которые преследуют игрока
 let particles = [];
 let bonuses = [];
+let screenEffects = []; // Визуальные эффекты экрана
+let lastGravityFlip = 0; // Время последнего переворота
 
 // Бонусы
 let activeBonuses = {
@@ -125,8 +128,23 @@ function handleGameClick(e) {
 
 function flipGravity() {
     gravityDirection = (gravityDirection + 1) % 4;
+    lastGravityFlip = gameTime;
     
-    // Эффект вибрации (если доступно)
+    // Визуальный эффект переворота
+    createGravityFlipEffect();
+    
+    // Отталкивание врагов при перевороте
+    enemies.forEach(enemy => {
+        const dx = enemy.x - ball.x;
+        const dy = enemy.y - ball.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 200) {
+            enemy.x += (dx / dist) * 30;
+            enemy.y += (dy / dist) * 30;
+        }
+    });
+    
+    // Эффект вибрации
     if (window.Telegram?.WebApp?.HapticFeedback) {
         window.Telegram.WebApp.HapticFeedback.impactOccurred('medium');
     }
@@ -155,10 +173,13 @@ function resetGame() {
     combo = 0;
     comboMultiplier = 1;
     lastStarTime = 0;
+    lastGravityFlip = 0;
     scoreAnimations = [];
+    screenEffects = [];
     gravityDirection = 0;
     stars = [];
     obstacles = [];
+    enemies = [];
     particles = [];
     bonuses = [];
     activeBonuses = { shield: false, magnet: false, slowMotion: false };
@@ -248,13 +269,18 @@ function update() {
     gameTime++;
     
     // Генерация звезд (еще больше увеличена частота)
-    if (Math.random() < 0.08) {
+    if (Math.random() < 0.12) {
         createStar();
     }
     
     // Генерация специальных звезд (редкие, больше очков)
-    if (Math.random() < 0.003) {
+    if (Math.random() < 0.005) {
         createSpecialStar();
+    }
+    
+    // Ритмичные эффекты - пульсация экрана в такт
+    if (gameTime % 60 === 0) {
+        createRhythmEffect();
     }
     
     // Генерация препятствий (только после 5 секунд игры, реже на старте)
@@ -262,6 +288,42 @@ function update() {
     if (Math.random() < obstacleChance) {
         createObstacle();
     }
+    
+    // Генерация врагов (после 10 секунд)
+    if (gameTime > 600 && Math.random() < 0.003) {
+        createEnemy();
+    }
+    
+    // Обновление врагов
+    enemies.forEach((enemy, index) => {
+        // Враги преследуют игрока
+        const dx = ball.x - enemy.x;
+        const dy = ball.y - enemy.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist > 0) {
+            enemy.x += (dx / dist) * enemy.speed;
+            enemy.y += (dy / dist) * enemy.speed;
+        }
+        
+        // Вращение
+        enemy.angle += 0.1;
+        
+        // Проверка столкновения
+        const collisionDist = Math.sqrt(
+            Math.pow(ball.x - enemy.x, 2) + Math.pow(ball.y - enemy.y, 2)
+        );
+        if (collisionDist < ball.radius + enemy.radius && !activeBonuses.shield) {
+            hitObstacle();
+            enemies.splice(index, 1);
+        }
+        
+        // Удаление за пределами экрана
+        if (enemy.x < -50 || enemy.x > canvas.width + 50 ||
+            enemy.y < -50 || enemy.y > canvas.height + 50) {
+            enemies.splice(index, 1);
+        }
+    });
     
     // Генерация бонусов
     if (Math.random() < 0.005) {
@@ -316,23 +378,51 @@ function update() {
             // Анимация очков
             createScoreAnimation(star.x, star.y, points, comboMultiplier > 1);
             createStarParticles(star.x, star.y, star.color || '#ffd700');
+            
+            // Визуальный эффект при сборе специальной звезды
+            if (star.type !== 'normal') {
+                createWaveEffect(star.x, star.y, star.color);
+                screenEffects.push({
+                    color: star.color,
+                    life: 8,
+                    maxLife: 8,
+                    alpha: 0.3
+                });
+            }
+            
             stars.splice(index, 1);
             updateUI();
             
-            // Вибрация при сборе
+            // Вибрация при сборе (сильнее для специальных звезд)
             if (window.Telegram?.WebApp?.HapticFeedback) {
-                window.Telegram.WebApp.HapticFeedback.impactOccurred('light');
+                if (star.type !== 'normal') {
+                    window.Telegram.WebApp.HapticFeedback.impactOccurred('medium');
+                } else {
+                    window.Telegram.WebApp.HapticFeedback.impactOccurred('light');
+                }
             }
         }
     });
     
-    // Обновление препятствий
+    // Обновление препятствий (теперь они движутся!)
     obstacles.forEach((obstacle, index) => {
+        // Движение препятствия
+        obstacle.x += obstacle.vx;
+        obstacle.y += obstacle.vy;
+        obstacle.rotation += obstacle.rotationSpeed;
+        
+        // Проверка столкновения
         const dist = Math.sqrt(
             Math.pow(ball.x - obstacle.x, 2) + Math.pow(ball.y - obstacle.y, 2)
         );
         if (dist < ball.radius + obstacle.radius && !activeBonuses.shield) {
             hitObstacle();
+            obstacles.splice(index, 1);
+        }
+        
+        // Удаление за пределами экрана
+        if (obstacle.x < -100 || obstacle.x > canvas.width + 100 ||
+            obstacle.y < -100 || obstacle.y > canvas.height + 100) {
             obstacles.splice(index, 1);
         }
     });
@@ -366,6 +456,15 @@ function update() {
         anim.alpha = anim.life / anim.maxLife;
         if (anim.life <= 0) {
             scoreAnimations.splice(index, 1);
+        }
+    });
+    
+    // Обновление эффектов экрана
+    screenEffects.forEach((effect, index) => {
+        effect.life--;
+        effect.alpha = effect.life / effect.maxLife;
+        if (effect.life <= 0) {
+            screenEffects.splice(index, 1);
         }
     });
     
@@ -415,7 +514,20 @@ function render() {
     
     // Отрисовка препятствий
     obstacles.forEach(obstacle => {
-        drawObstacle(obstacle.x, obstacle.y, obstacle.radius, obstacle.color);
+        drawObstacle(obstacle.x, obstacle.y, obstacle.radius, obstacle.color, obstacle.rotation);
+    });
+    
+    // Отрисовка врагов
+    enemies.forEach(enemy => {
+        drawEnemy(enemy.x, enemy.y, enemy.radius, enemy.angle);
+    });
+    
+    // Отрисовка эффектов экрана
+    screenEffects.forEach(effect => {
+        ctx.globalAlpha = effect.alpha * 0.3;
+        ctx.fillStyle = effect.color;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1;
     });
     
     // Отрисовка бонусов
@@ -423,10 +535,20 @@ function render() {
         drawBonus(bonus.x, bonus.y, bonus.radius, bonus.type);
     });
     
-    // Отрисовка шарика
+    // Отрисовка шарика с эффектом переворота
     if (activeBonuses.shield) {
         ctx.shadowBlur = 20;
         ctx.shadowColor = '#00ff00';
+    } else {
+        // Эффект свечения при недавнем перевороте
+        if (gameTime - lastGravityFlip < 20) {
+            const colors = ['#00f5ff', '#ff00ff', '#00ff00', '#ffff00'];
+            ctx.shadowBlur = 25;
+            ctx.shadowColor = colors[gravityDirection];
+        } else {
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = ball.color;
+        }
     }
     drawBall(ball.x, ball.y, ball.radius, ball.color);
     ctx.shadowBlur = 0;
@@ -473,19 +595,30 @@ function render() {
 }
 
 function drawBall(x, y, radius, color) {
-    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
-    gradient.addColorStop(0, color);
-    gradient.addColorStop(1, 'rgba(0, 245, 255, 0.3)');
+    // Пульсация шарика
+    const pulse = Math.sin(gameTime * 0.3) * 2;
+    const currentRadius = radius + pulse;
+    
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, currentRadius);
+    gradient.addColorStop(0, '#fff');
+    gradient.addColorStop(0.3, color);
+    gradient.addColorStop(1, 'rgba(0, 245, 255, 0.2)');
     
     ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.arc(x, y, currentRadius, 0, Math.PI * 2);
     ctx.fill();
     
     // Обводка
     ctx.strokeStyle = '#fff';
     ctx.lineWidth = 2;
     ctx.stroke();
+    
+    // Внутренний блик
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.beginPath();
+    ctx.arc(x - currentRadius * 0.3, y - currentRadius * 0.3, currentRadius * 0.4, 0, Math.PI * 2);
+    ctx.fill();
 }
 
 function drawStar(x, y, radius, color) {
@@ -518,14 +651,18 @@ function drawStar(x, y, radius, color) {
     ctx.fill();
 }
 
-function drawObstacle(x, y, radius, color) {
-    const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+function drawObstacle(x, y, radius, color, rotation = 0) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rotation);
+    
+    const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
     gradient.addColorStop(0, color);
     gradient.addColorStop(1, 'rgba(255, 0, 0, 0.3)');
     
     ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
     ctx.fill();
     
     // Шипы
@@ -533,15 +670,17 @@ function drawObstacle(x, y, radius, color) {
     ctx.lineWidth = 3;
     for (let i = 0; i < 8; i++) {
         const angle = (Math.PI * 2 * i) / 8;
-        const x1 = x + Math.cos(angle) * radius;
-        const y1 = y + Math.sin(angle) * radius;
-        const x2 = x + Math.cos(angle) * (radius + 5);
-        const y2 = y + Math.sin(angle) * (radius + 5);
+        const x1 = Math.cos(angle) * radius;
+        const y1 = Math.sin(angle) * radius;
+        const x2 = Math.cos(angle) * (radius + 5);
+        const y2 = Math.sin(angle) * (radius + 5);
         ctx.beginPath();
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);
         ctx.stroke();
     }
+    
+    ctx.restore();
 }
 
 function drawBonus(x, y, radius, type) {
@@ -723,32 +862,183 @@ function createSpecialStar() {
 
 function createObstacle() {
     const side = Math.floor(Math.random() * 4);
-    let x, y;
+    let x, y, vx, vy;
     
     switch(side) {
         case 0:
             x = Math.random() * canvas.width;
             y = -30;
+            vx = (Math.random() - 0.5) * 2;
+            vy = 1 + Math.random() * 2;
             break;
         case 1:
             x = canvas.width + 30;
             y = Math.random() * canvas.height;
+            vx = -1 - Math.random() * 2;
+            vy = (Math.random() - 0.5) * 2;
             break;
         case 2:
             x = Math.random() * canvas.width;
             y = canvas.height + 30;
+            vx = (Math.random() - 0.5) * 2;
+            vy = -1 - Math.random() * 2;
             break;
         case 3:
             x = -30;
             y = Math.random() * canvas.height;
+            vx = 1 + Math.random() * 2;
+            vy = (Math.random() - 0.5) * 2;
             break;
     }
     
     obstacles.push({
         x: x,
         y: y,
+        vx: vx,
+        vy: vy,
         radius: 20 + Math.random() * 15,
-        color: '#ff0000'
+        color: '#ff0000',
+        rotation: Math.random() * Math.PI * 2,
+        rotationSpeed: (Math.random() - 0.5) * 0.1
+    });
+}
+
+function createEnemy() {
+    const side = Math.floor(Math.random() * 4);
+    let x, y;
+    
+    switch(side) {
+        case 0:
+            x = Math.random() * canvas.width;
+            y = -40;
+            break;
+        case 1:
+            x = canvas.width + 40;
+            y = Math.random() * canvas.height;
+            break;
+        case 2:
+            x = Math.random() * canvas.width;
+            y = canvas.height + 40;
+            break;
+        case 3:
+            x = -40;
+            y = Math.random() * canvas.height;
+            break;
+    }
+    
+    enemies.push({
+        x: x,
+        y: y,
+        radius: 18,
+        speed: 0.8 + Math.random() * 0.4,
+        angle: 0,
+        color: '#ff0066'
+    });
+}
+
+function drawEnemy(x, y, radius, angle) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    
+    // Градиент
+    const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
+    gradient.addColorStop(0, '#ff0066');
+    gradient.addColorStop(0.5, '#ff0044');
+    gradient.addColorStop(1, 'rgba(255, 0, 102, 0.3)');
+    
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Глаза
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(-radius * 0.3, -radius * 0.3, radius * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(radius * 0.3, -radius * 0.3, radius * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Рот
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, radius * 0.2, radius * 0.3, 0, Math.PI);
+    ctx.stroke();
+    
+    // Свечение
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = '#ff0066';
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    
+    ctx.restore();
+}
+
+function createGravityFlipEffect() {
+    // Визуальный эффект при перевороте гравитации
+    const colors = ['#00f5ff', '#ff00ff', '#00ff00', '#ffff00'];
+    screenEffects.push({
+        color: colors[gravityDirection],
+        life: 15,
+        maxLife: 15,
+        alpha: 1
+    });
+    
+    // Частицы переворота
+    for (let i = 0; i < 50; i++) {
+        particles.push({
+            x: ball.x,
+            y: ball.y,
+            vx: (Math.random() - 0.5) * 20,
+            vy: (Math.random() - 0.5) * 20,
+            size: Math.random() * 6 + 3,
+            color: colors[gravityDirection],
+            life: 50,
+            maxLife: 50,
+            alpha: 1
+        });
+    }
+    
+    // Волновой эффект от шарика
+    for (let i = 0; i < 3; i++) {
+        setTimeout(() => {
+            createWaveEffect(ball.x, ball.y, colors[gravityDirection]);
+        }, i * 5);
+    }
+}
+
+function createWaveEffect(x, y, color) {
+    for (let i = 0; i < 20; i++) {
+        const angle = (Math.PI * 2 * i) / 20;
+        particles.push({
+            x: x,
+            y: y,
+            vx: Math.cos(angle) * 8,
+            vy: Math.sin(angle) * 8,
+            size: 4,
+            color: color,
+            life: 30,
+            maxLife: 30,
+            alpha: 1
+        });
+    }
+}
+
+function createRhythmEffect() {
+    // Ритмичные визуальные эффекты
+    const rhythmColors = ['#00f5ff', '#ff00ff', '#00ff00'];
+    const color = rhythmColors[Math.floor(Math.random() * rhythmColors.length)];
+    
+    screenEffects.push({
+        color: color,
+        life: 5,
+        maxLife: 5,
+        alpha: 0.2
     });
 }
 
