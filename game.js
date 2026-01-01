@@ -4,9 +4,13 @@ let gameState = 'menu'; // menu, playing, paused, gameover
 let score = 0;
 let highScore = 0;
 let lives = 3;
-let gameSpeed = 1.2; // Уменьшена начальная скорость
+let gameSpeed = 1.2;
 let gravityDirection = 0; // 0: down, 1: up, 2: left, 3: right
-let gameTime = 0; // Время игры для прогрессивной сложности
+let gameTime = 0;
+let combo = 0; // Комбо система
+let comboMultiplier = 1; // Мультипликатор очков
+let lastStarTime = 0; // Время последней собранной звезды
+let scoreAnimations = []; // Анимации очков
 let gravityDirections = [
     { x: 0, y: 1, name: 'down' },
     { x: 0, y: -1, name: 'up' },
@@ -146,8 +150,12 @@ function startGame() {
 function resetGame() {
     score = 0;
     lives = 3;
-    gameSpeed = 1.2; // Уменьшена начальная скорость
-    gameTime = 0; // Сброс времени
+    gameSpeed = 1.2;
+    gameTime = 0;
+    combo = 0;
+    comboMultiplier = 1;
+    lastStarTime = 0;
+    scoreAnimations = [];
     gravityDirection = 0;
     stars = [];
     obstacles = [];
@@ -184,18 +192,26 @@ function update() {
     const dt = activeBonuses.slowMotion ? 0.5 : 1;
     const currentGravity = gravityDirections[gravityDirection];
     
-    // Применение гравитации
-    ball.vx += currentGravity.x * gameSpeed * dt * 0.1;
-    ball.vy += currentGravity.y * gameSpeed * dt * 0.1;
+    // УПРОЩЕННОЕ УПРАВЛЕНИЕ - более отзывчивое, меньше инерции
+    // Прямое применение гравитации без накопления скорости
+    const gravityStrength = gameSpeed * 0.15; // Уменьшена сила гравитации
+    ball.vx = currentGravity.x * gravityStrength * 8; // Прямое управление
+    ball.vy = currentGravity.y * gravityStrength * 8;
     
-    // Ограничение скорости (уменьшено для более плавного управления)
-    const maxSpeed = 6; // Было 8
+    // Ограничение скорости
+    const maxSpeed = 5; // Еще больше уменьшено
     ball.vx = Math.max(-maxSpeed, Math.min(maxSpeed, ball.vx));
     ball.vy = Math.max(-maxSpeed, Math.min(maxSpeed, ball.vy));
     
     // Обновление позиции
     ball.x += ball.vx * dt;
     ball.y += ball.vy * dt;
+    
+    // Обновление комбо (сброс если долго не собирали звезды)
+    if (gameTime - lastStarTime > 180) { // 3 секунды
+        combo = 0;
+        comboMultiplier = 1;
+    }
     
     // Границы экрана (с отскоком, без урона на старте)
     if (ball.x < ball.radius) {
@@ -231,9 +247,14 @@ function update() {
     // Увеличение времени игры
     gameTime++;
     
-    // Генерация звезд (увеличена частота)
-    if (Math.random() < 0.05) {
+    // Генерация звезд (еще больше увеличена частота)
+    if (Math.random() < 0.08) {
         createStar();
+    }
+    
+    // Генерация специальных звезд (редкие, больше очков)
+    if (Math.random() < 0.003) {
+        createSpecialStar();
     }
     
     // Генерация препятствий (только после 5 секунд игры, реже на старте)
@@ -277,8 +298,24 @@ function update() {
             Math.pow(ball.x - star.x, 2) + Math.pow(ball.y - star.y, 2)
         );
         if (dist < ball.radius + star.radius) {
-            score += 10;
-            createStarParticles(star.x, star.y);
+            // Комбо система
+            combo++;
+            lastStarTime = gameTime;
+            
+            // Мультипликатор растет с комбо
+            if (combo > 5) comboMultiplier = 2;
+            if (combo > 10) comboMultiplier = 3;
+            if (combo > 20) comboMultiplier = 4;
+            if (combo > 30) comboMultiplier = 5;
+            
+            // Очки зависят от типа звезды
+            const basePoints = star.points || 10;
+            const points = Math.floor(basePoints * comboMultiplier);
+            score += points;
+            
+            // Анимация очков
+            createScoreAnimation(star.x, star.y, points, comboMultiplier > 1);
+            createStarParticles(star.x, star.y, star.color || '#ffd700');
             stars.splice(index, 1);
             updateUI();
             
@@ -322,6 +359,16 @@ function update() {
         }
     });
     
+    // Обновление анимаций очков
+    scoreAnimations.forEach((anim, index) => {
+        anim.y -= 2;
+        anim.life--;
+        anim.alpha = anim.life / anim.maxLife;
+        if (anim.life <= 0) {
+            scoreAnimations.splice(index, 1);
+        }
+    });
+    
     // Обновление таймеров бонусов
     Object.keys(bonusTimers).forEach(bonus => {
         if (bonusTimers[bonus] > 0) {
@@ -357,7 +404,13 @@ function render() {
     
     // Отрисовка звезд
     stars.forEach(star => {
-        drawStar(star.x, star.y, star.radius, star.color);
+        // Пульсация для специальных звезд
+        if (star.type !== 'normal') {
+            const pulse = Math.sin(gameTime * 0.2) * 2;
+            drawStar(star.x, star.y, star.radius + pulse, star.color);
+        } else {
+            drawStar(star.x, star.y, star.radius, star.color);
+        }
     });
     
     // Отрисовка препятствий
@@ -387,6 +440,33 @@ function render() {
         ctx.fill();
     });
     ctx.globalAlpha = 1;
+    
+    // Отрисовка анимаций очков
+    scoreAnimations.forEach(anim => {
+        ctx.globalAlpha = anim.alpha;
+        ctx.fillStyle = anim.color;
+        ctx.font = `bold ${anim.size}px Arial`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 3;
+        ctx.strokeText(anim.text, anim.x, anim.y);
+        ctx.fillText(anim.text, anim.x, anim.y);
+        ctx.globalAlpha = 1;
+    });
+    
+    // Отрисовка комбо
+    if (combo > 0) {
+        ctx.fillStyle = comboMultiplier > 1 ? '#ff00ff' : '#00f5ff';
+        ctx.font = 'bold 20px Arial';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        const comboText = `COMBO x${comboMultiplier} (${combo})`;
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        ctx.strokeText(comboText, 15, 60);
+        ctx.fillText(comboText, 15, 60);
+    }
     
     // Индикатор направления гравитации
     drawGravityIndicator();
@@ -593,8 +673,51 @@ function createStar() {
     stars.push({
         x: x,
         y: y,
-        radius: 12, // Увеличен размер для лучшей видимости
-        color: '#ffd700'
+        radius: 12,
+        color: '#ffd700',
+        points: 10,
+        type: 'normal'
+    });
+}
+
+function createSpecialStar() {
+    // Специальные звезды с большим количеством очков
+    const types = [
+        { color: '#ff00ff', points: 50, radius: 16, type: 'rare' },
+        { color: '#00ff00', points: 30, radius: 14, type: 'good' },
+        { color: '#ff6b00', points: 25, radius: 13, type: 'orange' }
+    ];
+    
+    const starType = types[Math.floor(Math.random() * types.length)];
+    const side = Math.floor(Math.random() * 4);
+    let x, y;
+    
+    switch(side) {
+        case 0:
+            x = Math.random() * canvas.width;
+            y = -20;
+            break;
+        case 1:
+            x = canvas.width + 20;
+            y = Math.random() * canvas.height;
+            break;
+        case 2:
+            x = Math.random() * canvas.width;
+            y = canvas.height + 20;
+            break;
+        case 3:
+            x = -20;
+            y = Math.random() * canvas.height;
+            break;
+    }
+    
+    stars.push({
+        x: x,
+        y: y,
+        radius: starType.radius,
+        color: starType.color,
+        points: starType.points,
+        type: starType.type
     });
 }
 
@@ -748,6 +871,16 @@ function updateUI() {
     document.getElementById('current-score').textContent = score;
     document.getElementById('lives-count').textContent = lives;
     document.getElementById('high-score-value').textContent = highScore;
+    
+    // Обновление комбо
+    const comboDisplay = document.getElementById('combo-display');
+    if (combo > 0) {
+        comboDisplay.classList.remove('hidden');
+        document.getElementById('combo-multiplier').textContent = comboMultiplier;
+        document.getElementById('combo-count').textContent = combo;
+    } else {
+        comboDisplay.classList.add('hidden');
+    }
 }
 
 function createFlipParticles() {
@@ -766,20 +899,33 @@ function createFlipParticles() {
     }
 }
 
-function createStarParticles(x, y) {
-    for (let i = 0; i < 15; i++) {
+function createStarParticles(x, y, color = '#ffd700') {
+    for (let i = 0; i < 20; i++) {
         particles.push({
             x: x,
             y: y,
-            vx: (Math.random() - 0.5) * 8,
-            vy: (Math.random() - 0.5) * 8,
-            size: Math.random() * 3 + 2,
-            color: '#ffd700',
-            life: 20,
-            maxLife: 20,
+            vx: (Math.random() - 0.5) * 10,
+            vy: (Math.random() - 0.5) * 10,
+            size: Math.random() * 4 + 2,
+            color: color,
+            life: 25,
+            maxLife: 25,
             alpha: 1
         });
     }
+}
+
+function createScoreAnimation(x, y, points, isCombo) {
+    scoreAnimations.push({
+        x: x,
+        y: y,
+        text: `+${points}`,
+        size: isCombo ? 28 : 22,
+        color: isCombo ? '#ff00ff' : '#00f5ff',
+        life: 60,
+        maxLife: 60,
+        alpha: 1
+    });
 }
 
 function createHitParticles() {
