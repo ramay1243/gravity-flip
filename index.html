@@ -119,8 +119,18 @@
         </div>
     </div>
 
-    <script src="game.js"></script>
     <script src="telegram-integration.js"></script>
+    <script src="game.js"></script>
+    <script>
+        // Инициализация при загрузке (работает и без Telegram)
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                setTimeout(init, 100);
+            });
+        } else {
+            setTimeout(init, 100);
+        }
+    </script>
 </body>
 </html>
 

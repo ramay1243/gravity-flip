@@ -1,0 +1,20 @@
+{
+  "name": "gravity-flip-auto-deploy",
+  "version": "1.0.0",
+  "description": "Автоматическое отслеживание изменений и загрузка на GitHub",
+  "scripts": {
+    "watch": "node watch-and-push.js",
+    "push": "node auto-push-simple.js"
+  },
+  "keywords": [
+    "github",
+    "auto-deploy",
+    "watch"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "chokidar": "^3.5.3"
+  }
+}
+

@@ -20,6 +20,10 @@ npm-debug.log*
 # Node modules (если будет использоваться)
 node_modules/
 
+# Package files
+package-lock.json
+yarn.lock
+
 # Build files
 dist/
 build/

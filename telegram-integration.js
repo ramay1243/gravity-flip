@@ -6,11 +6,24 @@ let tg = window.Telegram?.WebApp;
 function initTelegram() {
     if (!tg) {
         console.log('Telegram Web App API не доступен. Запуск в демо режиме.');
+        // Инициализируем игру даже без Telegram API
+        if (typeof init === 'function') {
+            setTimeout(() => {
+                if (typeof window.init === 'function') {
+                    window.init();
+                }
+            }, 100);
+        }
         return;
     }
     
-    tg.ready();
-    tg.expand();
+    try {
+        tg.ready();
+        tg.expand();
+    } catch (e) {
+        console.error('Ошибка инициализации Telegram API:', e);
+        // Продолжаем работу даже при ошибке
+    }
     
     // Настройка темы
     if (tg.colorScheme === 'dark') {
